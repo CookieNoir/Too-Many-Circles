@@ -4,7 +4,6 @@
 	{
 		_MainTex("Texture", 2D) = "white" {}
 		_Color("Color", color) = (1,1,1,1)
-		_AlphaMultiplier("Alpha Multiplier", float) = 1.0
 	}
 		SubShader
 		{
@@ -36,7 +35,6 @@
 				sampler2D _MainTex;
 				float4 _MainTex_ST;
 				fixed4 _Color;
-				float _AlphaMultiplier;
 
 				v2f vert(appdata v)
 				{
@@ -58,7 +56,7 @@
 					fixed4 col = tex2D(_MainTex, i.uv2) * _Color;
 					float gradientX = 1.0 - cube(max(0.0, abs(2.0*i.uv.x - 1.0) * 2.0 - 1.0));
 					float gradientY = 1.0 - cube(max(0.0, abs(2.0*i.uv.y - 1.0) * 2.0 - 1.0));
-					col.a *= gradientX * gradientY * _AlphaMultiplier;
+					col.a *= gradientX * gradientY;
 					return col;
 				}
 				ENDCG

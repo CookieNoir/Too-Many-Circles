@@ -5,15 +5,18 @@ public class Circle : FadeableObject
 {
     public float radius;
     public Vector2 radiusRange;
-    [Min(0.02f)] public float thickness;
-    public Color color;
+    [Range(0f, 1f)] public float colorGradientValue;
+    public float thickness = 0.025f;
     private MeshFilter meshFilter;
     private Vector3[] pointsPositions;
     private Mesh mesh;
+    protected float clippedValue;
 
-    protected virtual void Start()
+    protected override void Awake()
     {
+        base.Awake();
         CreateAndSetMesh();
+        ClipRadius();
     }
 
     protected void CreateAndSetMesh()
@@ -28,6 +31,13 @@ public class Circle : FadeableObject
         meshFilter.mesh = mesh;
     }
 
+    public virtual void SetRadius(float newRadius)
+    {
+        radius = Mathf.Clamp(newRadius, radiusRange.x, radiusRange.y);
+        Remesh();
+        ClipRadius();
+    }
+
     public virtual void ChangeRadius(float delta)
     {
         delta = radius + delta;
@@ -35,7 +45,18 @@ public class Circle : FadeableObject
         {
             radius = Mathf.Clamp(delta, radiusRange.x, radiusRange.y);
             Remesh();
+            ClipRadius();
         }
+    }
+
+    protected virtual void ClipRadius()
+    {
+        clippedValue = Mathf.Approximately(radiusRange.x, radiusRange.y) ? -1f : (radius - radiusRange.x) / (radiusRange.y - radiusRange.x);
+    }
+
+    public float GetClippedValue()
+    {
+        return clippedValue;
     }
 
     protected void Remesh()
