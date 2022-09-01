@@ -1,17 +1,21 @@
 ﻿using System.Collections;
+using System.Collections.Generic;
 using UnityEngine;
+using UnityEngine.UI;
+using GameAnalyticsSDK;
 
 public class GameController : MonoBehaviour
 {
-    public Level[] levels; // startTarget shouldn't be here. It will be swapped with the circle which will become a new target
+    public Level startLevel;
+    public List<Level> levels;
     [Header("Start Player Properties")]
     public Player player;
-    public Circle startTarget;
-    [Min(0.05f)] public float startSpeed;
-    [Range(0f, 360f)] public float startAngle;
-    public bool moveClockwise;
-    [Header("Start Player Properties")]
-    // These fields are made for a bit faster work of update cycle
+    public SmoothCamera smoothCamera;
+    public Circle endCircle;
+    [Header("Circle Manipulation")]
+    public Slider slider;
+    [Min(0f)] public float deltaMultiplier;
+    public const float materialScaleMultiplier = 4f;
     private Circle playerCircle;
     private Vector3 playerCirclePosition;
 
@@ -24,17 +28,18 @@ public class GameController : MonoBehaviour
     private const float passDelta1 = 0.04f;
     private const float passDelta2 = 0.02f;
 
+    private void Awake()
+    {
+        turnOffPrevLevel = TurnOffPreviousLevel(currentLevel);
+    }
+
     private void Start()
     {
-        currentLevel = 0;
-        turnOffPrevLevel = TurnOffPreviousLevel(currentLevel);
-
-        if (moveClockwise) player.SetStartTarget(startTarget, startSpeed, -1f, startAngle * Mathf.Deg2Rad);
-        else player.SetStartTarget(startTarget, startSpeed, 1f, startAngle * Mathf.Deg2Rad);
-
-        playerCircle = startTarget;
-        playerCirclePosition = startTarget.transform.position;
-        timeSwap = Time.time;
+        GameAnalytics.Initialize();
+        endCircle.gameObject.SetActive(true);
+        SetLevel(levels.IndexOf(startLevel));
+        RefreshPlayerTarget(true);
+        SetEndCircle(levels[currentLevel].final);
     }
 
     void Update()
@@ -43,45 +48,77 @@ public class GameController : MonoBehaviour
         {
             ChangeCircle();
         }
+        ChangeRadius();
     }
 
     private void ChangeCircle()
     {
         for (int i = 0; i < levels[currentLevel].circles.Length; ++i)
         {
-            float distance = Vector3.Magnitude(playerCirclePosition - levels[currentLevel].circles[i].transform.position);
-            if (Mathf.Abs(distance - playerCircle.radius - levels[currentLevel].circles[i].radius) < passDelta1)
+            if (levels[currentLevel].circles[i] != playerCircle)
             {
-                Vector3 touchPoint = Vector3.Lerp(playerCirclePosition, levels[currentLevel].circles[i].transform.position, playerCircle.radius / (playerCircle.radius + levels[currentLevel].circles[i].radius));
-                if (Vector3.SqrMagnitude(player.transform.position - touchPoint) < passDelta2)
+                float distance = Vector3.Magnitude(playerCirclePosition - levels[currentLevel].circles[i].transform.position);
+                if (Mathf.Abs(distance - playerCircle.radius - levels[currentLevel].circles[i].radius) < passDelta1)
                 {
-                    playerCircle = levels[currentLevel].circles[i];
-                    levels[currentLevel].circles[i] = player.GetCircle();
-                    player.ChangeTarget(playerCircle, -1f);
-                    playerCirclePosition = playerCircle.transform.position;
-                    timeSwap = Time.time;
-                    CheckForNextLevel();
-                    return;
+                    Vector3 touchPoint = Vector3.Lerp(playerCirclePosition, levels[currentLevel].circles[i].transform.position, playerCircle.radius / (playerCircle.radius + levels[currentLevel].circles[i].radius));
+                    if (Vector3.SqrMagnitude(player.transform.position - touchPoint) < passDelta2)
+                    {
+                        SetNewTargetCircleWithChecking(levels[currentLevel].circles[i], -1f);
+                        return;
+                    }
+                }
+                else if (Mathf.Abs(distance - Mathf.Abs(playerCircle.radius - levels[currentLevel].circles[i].radius)) < passDelta1)
+                {
+                    Vector3 touchPoint;
+                    if (playerCircle.radius > levels[currentLevel].circles[i].radius)
+                        touchPoint = playerCirclePosition + (levels[currentLevel].circles[i].transform.position - playerCirclePosition) * playerCircle.radius / distance;
+                    else
+                        touchPoint = levels[currentLevel].circles[i].transform.position + (playerCirclePosition - levels[currentLevel].circles[i].transform.position) * levels[currentLevel].circles[i].radius / distance;
+                    if (Vector3.SqrMagnitude(player.transform.position - touchPoint) < passDelta2)
+                    {
+                        SetNewTargetCircleWithChecking(levels[currentLevel].circles[i], 1f);
+                        return;
+                    }
                 }
             }
-            else if (Mathf.Abs(distance - Mathf.Abs(playerCircle.radius - levels[currentLevel].circles[i].radius)) < passDelta1)
-            {
-                Vector3 touchPoint;
-                if (playerCircle.radius > levels[currentLevel].circles[i].radius)
-                    touchPoint = playerCirclePosition + (levels[currentLevel].circles[i].transform.position - playerCirclePosition) * playerCircle.radius / distance;
-                else
-                    touchPoint = levels[currentLevel].circles[i].transform.position + (playerCirclePosition - levels[currentLevel].circles[i].transform.position) * levels[currentLevel].circles[i].radius / distance;
-                if (Vector3.SqrMagnitude(player.transform.position - touchPoint) < passDelta2)
-                {
-                    playerCircle = levels[currentLevel].circles[i];
-                    levels[currentLevel].circles[i] = player.GetCircle();
-                    player.ChangeTarget(playerCircle, 1f);
-                    playerCirclePosition = playerCircle.transform.position;
-                    timeSwap = Time.time;
-                    CheckForNextLevel();
-                    return;
-                }
-            }
+        }
+    }
+
+    private void SetNewTargetCircleWithChecking(Circle circle, float newDirection)
+    {
+        playerCircle = circle;
+        CheckForNextLevel();
+
+        RefreshPlayerTarget(false, newDirection);
+    }
+
+    private void RefreshPlayerTarget(bool setPositionAndAngle, float newDirection = 1f)
+    {
+        if (setPositionAndAngle)
+        {
+            player.SetStartTarget(levels[currentLevel].start, 
+                levels[currentLevel].moveClockwise ? -1f : 1f, levels[currentLevel].startAngle * Mathf.Deg2Rad);
+        }
+        else
+        {
+            player.ChangeTarget(playerCircle, newDirection);
+        }
+        playerCirclePosition = playerCircle.transform.position;
+        timeSwap = Time.time;
+        smoothCamera.SetTargetAndGradientValue(playerCircle.transform, playerCircle.colorGradientValue);
+        SetVisualRadius();
+    }
+
+    private void SetVisualRadius()
+    {
+        float clippedValue = playerCircle.GetClippedValue();
+        if (clippedValue > -1f)
+        {
+            slider.gameObject.SetActive(true);
+        }
+        else
+        {
+            slider.gameObject.SetActive(false);
         }
     }
 
@@ -89,33 +126,73 @@ public class GameController : MonoBehaviour
     {
         if (playerCircle == levels[currentLevel].final)
         {
+            GameAnalytics.NewProgressionEvent(GAProgressionStatus.Complete, "level " + (currentLevel + 1).ToString());
             levels[currentLevel].Hide();
+            endCircle.Hide();
 
             StopCoroutine(turnOffPrevLevel);
             turnOffPrevLevel = TurnOffPreviousLevel(currentLevel);
             StartCoroutine(turnOffPrevLevel);
 
-            currentLevel++;
-            levels[currentLevel].ShowFadeableObjects();
-            int nextLevel = currentLevel + 1;
-            if (nextLevel < levels.Length)
-            {
-                levels[nextLevel].gameObject.SetActive(true);
-                levels[currentLevel].ShowCircles();
-            }
+            SetLevel(currentLevel + 1);
+            RefreshPlayerTarget(false);
         }
+    }
+
+    private void SetLevel(int level)
+    {
+        GameAnalytics.NewProgressionEvent(GAProgressionStatus.Start, "level " + (level + 1).ToString());
+        currentLevel = level;
+        levels[currentLevel].gameObject.SetActive(true);
+        levels[currentLevel].ShowCircles();
+        levels[currentLevel].ShowFadeableObjects();
+        smoothCamera.SetColorGradient(levels[currentLevel].colorStart, levels[currentLevel].colorEnd,
+            levels[currentLevel].foregroundColorStart, levels[currentLevel].foregroundColorEnd);
+        playerCircle = levels[currentLevel].start;
+        player.ChangeSpeed(levels[currentLevel].levelSpeed);
     }
 
     private IEnumerator TurnOffPreviousLevel(int level)
     {
         yield return new WaitForSeconds(1f);
         levels[level].gameObject.SetActive(false);
+        SetEndCircle(levels[currentLevel].final);
     }
 
-    private void OnDrawGizmosSelected()
+    private void ChangeRadius()
     {
-        Gizmos.color = Color.yellow;
-        if (startTarget)
-            Gizmos.DrawWireSphere(startTarget.transform.position + PolarCoordinateSystem.GetPosition(startAngle * Mathf.Deg2Rad, startTarget.radius), 0.2f);
+        playerCircle.ChangeRadius(GetDelta() * deltaMultiplier);
+        VisualizeRadiusChange();
+    }
+
+    private float GetDelta()
+    {
+        if (Input.touchCount == 2)
+        {
+            Touch touchZero = Input.GetTouch(0);
+            Touch touchOne = Input.GetTouch(1);
+            float prevMagnitude = Helper.ClipPixelPosition(touchZero.position - touchZero.deltaPosition - touchOne.position + touchOne.deltaPosition).magnitude;
+            float currentMagnitude = Helper.ClipPixelPosition(touchZero.position - touchOne.position).magnitude;
+            return currentMagnitude - prevMagnitude;
+        }
+        else
+        {
+            return Input.GetAxis("Horizontal") * Time.deltaTime;
+        }
+    }
+
+    private void VisualizeRadiusChange()
+    {
+        slider.value = Mathf.Lerp(slider.value, playerCircle.GetClippedValue(), 0.1f);
+    }
+
+    private void SetEndCircle(Circle circle)
+    {
+        if (circle)
+        {
+            endCircle.transform.position = circle.transform.position;
+            endCircle.SetRadius(circle.radius);
+            endCircle.Show();
+        }
     }
 }

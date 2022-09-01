@@ -3,19 +3,23 @@
 public class ChainedCircle : Circle
 {
     [Header("Chaining")]
-    [Min(0f)] public float chainModifier;
+    public float startRadius;
+    public float chainModifier;
     public Circle[] circles;
     public LineRenderer[] lineRenderers;
-    public float scaleMultiplier;
     private float[] radiuses;
 
-
-    protected override void Start()
+    protected override void Awake()
     {
+        base.Awake();
         radiuses = new float[circles.Length];
+    }
 
+    protected void Start()
+    {
         CalculateRadius();
         CreateAndSetMesh();
+        ClipRadius();
     }
 
     public override void ChangeRadius(float delta)
@@ -25,7 +29,7 @@ public class ChainedCircle : Circle
 
     private void CalculateRadius()
     {
-        radius = 0;
+        radius = startRadius;
         for (int i = 0; i < circles.Length; ++i)
         {
             radius += circles[i].radius * chainModifier;
@@ -33,14 +37,22 @@ public class ChainedCircle : Circle
         }
         for (int i = 0; i < circles.Length; ++i)
         {
-            Vector3 position1 = circles[i].transform.position + (transform.position - circles[i].transform.position).normalized * radiuses[i];
-            Vector3 position2 = transform.position + (circles[i].transform.position - transform.position).normalized * radius;
+            if (lineRenderers[i])
+            {
+                Vector3 position1 = circles[i].transform.position + (transform.position - circles[i].transform.position).normalized * radiuses[i];
+                Vector3 position2 = transform.position + (circles[i].transform.position - transform.position).normalized * radius;
 
-            lineRenderers[i].SetPosition(0, position1);
-            lineRenderers[i].SetPosition(1, position2);
-            lineRenderers[i].material.mainTextureScale = new Vector2(Vector3.Magnitude(position1 - position2)*scaleMultiplier, 1f);
+                lineRenderers[i].SetPosition(0, position1);
+                lineRenderers[i].SetPosition(1, position2);
+                lineRenderers[i].material.mainTextureScale = new Vector2(Vector3.Magnitude(position1 - position2) * GameController.materialScaleMultiplier, 1f);
+            }
         }
         radius = Mathf.Clamp(radius, radiusRange.x, radiusRange.y);
+    }
+
+    protected override void ClipRadius()
+    {
+        clippedValue = -1f;
     }
 
     private void RecalculateRadius()
@@ -70,13 +82,20 @@ public class ChainedCircle : Circle
         Gizmos.color = Color.yellow;
         Gizmos.DrawWireSphere(transform.position, radiusRange.x);
         Gizmos.DrawWireSphere(transform.position, radiusRange.y);
-        Gizmos.color = Color.red;
-
-        float rad = 0;
+        float maxRadius = startRadius;
+        float minRadius = startRadius;
+        float currentRadius = startRadius;
         for (int i = 0; i < circles.Length; ++i)
         {
-            rad += circles[i].radiusRange.y * chainModifier;
+            maxRadius += circles[i].radiusRange.y * chainModifier;
+            minRadius += circles[i].radiusRange.x * chainModifier;
+            currentRadius += circles[i].radius * chainModifier;
         }
-        Gizmos.DrawWireSphere(transform.position, rad);
+        Gizmos.color = Color.red;
+        Gizmos.DrawWireSphere(transform.position, maxRadius);
+        Gizmos.color = Color.cyan;
+        Gizmos.DrawWireSphere(transform.position, currentRadius);
+        Gizmos.color = Color.white;
+        Gizmos.DrawWireSphere(transform.position, minRadius);
     }
 }

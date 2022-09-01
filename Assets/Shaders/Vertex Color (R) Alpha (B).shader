@@ -29,8 +29,8 @@
 				fixed4 color : COLOR;
 			};
 
-			fixed4 _Color1;
-			fixed4 _Color2;
+			half4 _Color1;
+			half4 _Color2;
 
 			v2f vert(appdata v)
 			{
@@ -42,7 +42,7 @@
 
 			fixed4 frag(v2f i) : SV_Target
 			{
-				fixed4 col = lerp(_Color1, _Color2, i.color.r);
+				half4 col = lerp(_Color1, _Color2, i.color.r);
 				col.a = i.color.b;
 				return col;
 			}
